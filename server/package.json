@@ -1,0 +1,15 @@
+{
+  "name": "orbitwatch-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "satellite.js": "^5.0.0"
+  }
+}

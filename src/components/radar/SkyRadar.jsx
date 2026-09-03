@@ -1,66 +1,152 @@
-function positionFor(satellite) {
-  const radius = 42 - satellite.elevation * 0.30;
-  const angle = ((satellite.azimuth - 90) * Math.PI) / 180;
+import { useMemo, useState } from "react";
+import { equatorialToHorizontal } from "../../lib/astro";
+import { BRIGHT_STARS } from "../../data/stars";
+
+const SIZE = 600;
+const CENTER = SIZE / 2;
+const RADIUS = 258;
+
+// Equidistant alt-az projection: zenith at centre, horizon at the rim.
+// North stays at the top; because this is the view looking straight UP
+// (not down at a map), east falls to the left and west to the right —
+// that's the real convention a planisphere uses, not an accident.
+function project(azimuthDeg, elevationDeg) {
+  const r = RADIUS * Math.max(0, (90 - elevationDeg) / 90);
+  const azRad = (azimuthDeg * Math.PI) / 180;
   return {
-    left: `${50 + Math.cos(angle) * radius}%`,
-    top: `${50 + Math.sin(angle) * radius * 0.68}%`,
+    x: CENTER - r * Math.sin(azRad),
+    y: CENTER - r * Math.cos(azRad)
   };
 }
 
-export default function SkyRadar({ satellites, selectedId, onSelect, view, onViewChange }) {
+function starSize(mag) {
+  return Math.max(0.9, 3.6 - mag * 0.55);
+}
+
+const CATEGORY_LABEL = {
+  station: "Station",
+  science: "Science",
+  weather: "Weather",
+  communication: "Comms",
+  other: "Object"
+};
+
+export default function SkyRadar({ satellites, selectedId, onSelect, location, now, status }) {
+  const [hoveredId, setHoveredId] = useState(null);
+
+  // Stars barely move minute to minute, so recompute on a 30s cadence
+  // rather than every clock tick.
+  const timeBucket = Math.floor(now.getTime() / 30000);
+  const stars = useMemo(() => {
+    if (!location) return [];
+    return BRIGHT_STARS.map((star) => {
+      const { altitude, azimuth } = equatorialToHorizontal(star, location, now);
+      return { ...star, altitude, azimuth };
+    }).filter((star) => star.altitude > -1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.lat, location?.lng, timeBucket]);
+
+  const visible = satellites.filter((sat) => sat.elevation >= 0);
+  const selected = visible.find((sat) => sat.id === selectedId);
+  const labeled = new Set(
+    visible
+      .slice()
+      .sort((a, b) => b.elevation - a.elevation)
+      .slice(0, 3)
+      .map((s) => s.id)
+      .concat(selected ? [selected.id] : [])
+  );
+
   return (
-    <section className={`sky-card ${view === "flat" ? "flat" : ""}`}>
+    <section className="sky-card">
       <div className="sky-card-head">
         <div>
-          <h2>Sky over you</h2>
-          <p>North is up. The centre is your location.</p>
-        </div>
-        <div className="view-switch" aria-label="Sky view">
-          <button className={view === "sky" ? "selected" : ""} onClick={() => onViewChange("sky")}>Sky</button>
-          <button className={view === "flat" ? "selected" : ""} onClick={() => onViewChange("flat")}>Flat</button>
+          <h2>The sky over you</h2>
+          <p>Facing north, looking straight up. The rim is your horizon.</p>
         </div>
       </div>
 
       <div className="sky-scene">
-        <div className="stars" />
-        <div className="soft-horizon" />
-        <div className="dome">
-          <div className="ring ring-a" /><div className="ring ring-b" /><div className="ring ring-c" />
-          <div className="axis x" /><div className="axis y" />
-          <span className="direction n">N</span><span className="direction e">E</span>
-          <span className="direction s">S</span><span className="direction w">W</span>
+        <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="Sky chart of satellites currently overhead">
+          <defs>
+            <radialGradient id="domeGradient" cx="50%" cy="42%" r="75%">
+              <stop offset="0%" stopColor="#1b2938" />
+              <stop offset="100%" stopColor="#0e1620" />
+            </radialGradient>
+          </defs>
 
-          {satellites.map((satellite) => {
-            const style = positionFor(satellite);
-            const selected = selectedId === satellite.id;
+          <circle cx={CENTER} cy={CENTER} r={RADIUS} fill="url(#domeGradient)" stroke="var(--line-strong)" strokeWidth="1.5" />
+          <circle cx={CENTER} cy={CENTER} r={RADIUS * (60 / 90)} fill="none" stroke="var(--line)" strokeWidth="1" strokeDasharray="2 5" />
+          <circle cx={CENTER} cy={CENTER} r={RADIUS * (30 / 90)} fill="none" stroke="var(--line)" strokeWidth="1" strokeDasharray="2 5" />
+
+          <text x={CENTER + 6} y={CENTER - RADIUS * (30 / 90) - 6} className="sky-ring-label">60°</text>
+          <text x={CENTER + 6} y={CENTER - RADIUS * (60 / 90) - 6} className="sky-ring-label">30°</text>
+
+          <line x1={CENTER} y1={CENTER - RADIUS} x2={CENTER} y2={CENTER + RADIUS} stroke="var(--line)" strokeWidth="1" />
+          <line x1={CENTER - RADIUS} y1={CENTER} x2={CENTER + RADIUS} y2={CENTER} stroke="var(--line)" strokeWidth="1" />
+
+          <text x={CENTER} y={CENTER - RADIUS - 14} className="sky-direction">N</text>
+          <text x={CENTER} y={CENTER + RADIUS + 26} className="sky-direction">S</text>
+          <text x={CENTER - RADIUS - 20} y={CENTER + 5} className="sky-direction">E</text>
+          <text x={CENTER + RADIUS + 20} y={CENTER + 5} className="sky-direction">W</text>
+
+          {stars.map((star) => {
+            const { x, y } = project(star.azimuth, star.altitude);
+            return <circle key={star.name} cx={x} cy={y} r={starSize(star.mag)} className="star-point" />;
+          })}
+
+          {visible.map((sat) => {
+            const { x, y } = project(sat.azimuth, sat.elevation);
+            const isSelected = sat.id === selectedId;
+            const showLabel = labeled.has(sat.id) || hoveredId === sat.id;
+
             return (
-              <button
-                key={satellite.id}
-                className={`satellite ${satellite.color} ${selected ? "selected" : ""}`}
-                style={style}
-                onClick={() => onSelect(satellite.id)}
-                aria-label={`Select ${satellite.name}`}
+              <g
+                key={sat.id}
+                className={`sat-mark sat-${sat.color} ${isSelected ? "is-selected" : ""}`}
+                onMouseEnter={() => setHoveredId(sat.id)}
+                onMouseLeave={() => setHoveredId((id) => (id === sat.id ? null : id))}
               >
-                <span className="satellite-point" />
-                {(selected || satellite.elevation > 45) && (
-                  <span className="satellite-label">
-                    <strong>{satellite.name}</strong>
-                    <small>{satellite.elevation}° high</small>
-                  </span>
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={isSelected ? 7 : 5}
+                  className="sat-dot"
+                  onClick={() => onSelect(sat.id)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Select ${sat.name}`}
+                  onKeyDown={(e) => e.key === "Enter" && onSelect(sat.id)}
+                />
+                {showLabel && (
+                  <g className="sat-label" transform={`translate(${x + 10}, ${y - 8})`}>
+                    <text className="sat-label-name">{sat.name}</text>
+                    <text className="sat-label-meta" y="13">
+                      {Math.round(sat.elevation)}° · {CATEGORY_LABEL[sat.category] || "Object"}
+                    </text>
+                  </g>
                 )}
-              </button>
+              </g>
             );
           })}
 
-          <div className="observer">You</div>
-        </div>
+          <circle cx={CENTER} cy={CENTER} r="3" fill="var(--gold)" />
+        </svg>
 
-        <div className="sky-note">
-          <span><i className="green-dot" /> Visible</span>
-          <span><i className="yellow-dot" /> Rising</span>
-          <span><i className="red-dot" /> Setting</span>
-          <span className="sky-note-text">Click a dot for details</span>
-        </div>
+        {status === "loading" && satellites.length === 0 && (
+          <div className="sky-overlay">Reading orbital elements…</div>
+        )}
+        {status === "error" && satellites.length === 0 && (
+          <div className="sky-overlay">Couldn't reach the tracking service.</div>
+        )}
+      </div>
+
+      <div className="sky-legend">
+        <span><i className="legend-dot sat-station" /> Stations</span>
+        <span><i className="legend-dot sat-science" /> Science</span>
+        <span><i className="legend-dot sat-weather" /> Weather</span>
+        <span><i className="legend-dot sat-comms" /> Communications</span>
+        <span className="sky-legend-note">{visible.length} above the horizon</span>
       </div>
     </section>
   );

@@ -7,71 +7,54 @@ import UpcomingPasses from "./components/satellites/UpcomingPasses";
 import SelectedSatellite from "./components/telemetry/SelectedSatellite";
 import Telemetry from "./components/telemetry/Telemetry";
 import AzimuthCard from "./components/telemetry/AzimuthCard";
-import { satellites } from "./data/satellites";
 import { useObserverLocation } from "./hooks/useObserverLocation";
+import { useSatellites } from "./hooks/useSatellites";
 
 function App() {
-  const { location, status, refreshLocation } =
-    useObserverLocation();
+  const { location, status: locationStatus, refreshLocation } = useObserverLocation();
+  const { satellites, status: satStatus, error: satError, updatedAt } = useSatellites(location);
 
-  const [selectedId, setSelectedId] = useState(
-    satellites[0]?.id
-  );
-
+  const [selectedId, setSelectedId] = useState(null);
   const [query, setQuery] = useState("");
   const [section, setSection] = useState("sky");
-  const [view, setView] = useState("sky");
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 1000);
-
+    const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const selectedSatellite =
-    satellites.find(
-      (satellite) => satellite.id === selectedId
-    ) || satellites[0];
+  useEffect(() => {
+    if (!selectedId && satellites.length > 0) {
+      setSelectedId(satellites[0].id);
+    }
+  }, [satellites, selectedId]);
+
+  const selectedSatellite = satellites.find((satellite) => satellite.id === selectedId) || null;
 
   const filteredSatellites = useMemo(() => {
     const value = query.trim().toLowerCase();
-
-    if (!value) {
-      return satellites;
-    }
-
+    if (!value) return satellites;
     return satellites.filter((satellite) =>
-      [
-        satellite.name,
-        satellite.subtitle,
-        satellite.type,
-      ]
-        .filter(Boolean)
-        .some((field) =>
-          field.toLowerCase().includes(value)
-        )
+      [satellite.name, satellite.type, satellite.operator].filter(Boolean).some((field) => field.toLowerCase().includes(value))
     );
-  }, [query]);
+  }, [query, satellites]);
 
   const handleSelectSatellite = (id) => {
     setSelectedId(id);
     setSection("sky");
   };
 
+  const secondsAgo = updatedAt ? Math.max(0, Math.round((now - updatedAt) / 1000)) : null;
+
   return (
     <div className="app-shell">
-      <Sidebar
-        activeSection={section}
-        onSectionChange={setSection}
-      />
+      <Sidebar activeSection={section} onSectionChange={setSection} />
 
       <main className="main-content">
         <Header
           location={location}
-          locationStatus={status}
+          locationStatus={locationStatus}
           onRefreshLocation={refreshLocation}
           query={query}
           onQueryChange={setQuery}
@@ -81,218 +64,121 @@ function App() {
           onSelectSatellite={handleSelectSatellite}
         />
 
-        {/* =====================================================
-            SKY
-            ===================================================== */}
-
         {section === "sky" && (
           <>
             <div className="page-intro">
               <div>
-                <div className="eyebrow">
-                  <span className="live-dot" />
-                  LIVE SKY
-                </div>
-
-                <h1>
-                  What&apos;s above{" "}
-                  <span>right now.</span>
-                </h1>
-
-                <p>
-                  A quiet view of the satellites currently
-                  crossing your sky.
-                </p>
+                <h1>What&rsquo;s above right now</h1>
+                <p>A live view of the satellites currently crossing your sky, propagated from real orbital data.</p>
               </div>
 
               <div className="sky-meta">
-                <span>
-                  {satellites.length
-                    .toString()
-                    .padStart(2, "0")}{" "}
-                  OBJECTS
-                </span>
-
-                <span>
-                  {location?.lat?.toFixed(2)}°
-                  {" / "}
-                  {location?.lng?.toFixed(2)}°
-                </span>
+                <span>{satellites.filter((s) => s.elevation >= 0).length} above the horizon</span>
+                <span>{secondsAgo === null ? "loading" : secondsAgo <= 1 ? "updated just now" : `updated ${secondsAgo}s ago`}</span>
               </div>
             </div>
 
+            {satError && satellites.length === 0 && (
+              <div className="error-banner">
+                Couldn&rsquo;t reach the tracking service ({satError}). Make sure the OrbitWatch server is running on port 8787.
+              </div>
+            )}
+
             <div className="dashboard">
               <div className="main-column">
-                <SkyRadar
-                  satellites={satellites}
-                  selectedId={selectedId}
-                  onSelect={handleSelectSatellite}
-                  view={view}
-                  onViewChange={setView}
-                />
+                <SkyRadar satellites={satellites} selectedId={selectedId} onSelect={handleSelectSatellite} location={location} now={now} status={satStatus} />
 
                 <div className="below-grid">
-                  <SelectedSatellite
-                    satellite={selectedSatellite}
-                  />
-
-                  <Telemetry
-                    satellite={selectedSatellite}
-                  />
-
-                  <AzimuthCard
-                    satellite={selectedSatellite}
-                  />
+                  <SelectedSatellite satellite={selectedSatellite} />
+                  <Telemetry satellite={selectedSatellite} />
+                  <AzimuthCard satellite={selectedSatellite} />
                 </div>
               </div>
 
               <div className="side-column">
-                <UpcomingPasses
-                  satellites={satellites}
-                  selectedId={selectedId}
-                  onSelect={handleSelectSatellite}
-                />
-
+                <UpcomingPasses location={location} selectedId={selectedId} onSelect={handleSelectSatellite} />
                 <SpaceWeather />
               </div>
             </div>
           </>
         )}
 
-        {/* =====================================================
-            PASSES
-            ===================================================== */}
-
         {section === "passes" && (
           <section className="simple-page">
             <div className="page-intro">
               <div>
-                <div className="eyebrow">
-                  PASS PREDICTIONS
-                </div>
-
-                <h1>Upcoming passes.</h1>
-
-                <p>
-                  The next opportunities to look up.
-                </p>
+                <h1>Upcoming passes</h1>
+                <p>Every rise over your horizon in the next day.</p>
               </div>
             </div>
 
-            <UpcomingPasses
-              satellites={satellites}
-              selectedId={selectedId}
-              onSelect={handleSelectSatellite}
-              expanded
-            />
+            <UpcomingPasses location={location} selectedId={selectedId} onSelect={handleSelectSatellite} expanded />
           </section>
         )}
-
-        {/* =====================================================
-            SATELLITES
-            ===================================================== */}
 
         {section === "satellites" && (
           <section className="simple-page">
             <div className="page-intro">
               <div>
-                <div className="eyebrow">
-                  OBJECT CATALOG
-                </div>
-
-                <h1>Satellites.</h1>
-
-                <p>
-                  Objects currently available to explore.
-                </p>
+                <h1>Tracked objects</h1>
+                <p>{satellites.length} objects currently in range, sampled from CelesTrak&rsquo;s live element sets.</p>
               </div>
             </div>
 
-            <div className="catalog-grid">
+            <div className="catalog-list">
+              <div className="catalog-head-row">
+                <span>Name</span>
+                <span>Type</span>
+                <span>Elevation</span>
+                <span>Altitude</span>
+              </div>
               {filteredSatellites.map((satellite) => (
-                <button
-                  key={satellite.id}
-                  className="catalog-card"
-                  onClick={() =>
-                    handleSelectSatellite(
-                      satellite.id
-                    )
-                  }
-                >
-                  <span
-                    className={`catalog-dot ${satellite.color}`}
-                  />
-
-                  <span>
-                    <strong>
-                      {satellite.name}
-                    </strong>
-
-                    <small>
-                      {satellite.subtitle}
-                    </small>
+                <button key={satellite.id} className={`catalog-row ${selectedId === satellite.id ? "selected" : ""}`} onClick={() => handleSelectSatellite(satellite.id)}>
+                  <span className="catalog-name">
+                    <i className={`legend-dot sat-${satellite.color}`} />
+                    {satellite.name}
                   </span>
-
-                  <b>
-                    {satellite.altitude} km
-                  </b>
+                  <span>{satellite.type}</span>
+                  <span>{satellite.elevation >= 0 ? `${Math.round(satellite.elevation)}°` : "below horizon"}</span>
+                  <span>{satellite.altitude.toLocaleString()} km</span>
                 </button>
               ))}
+              {filteredSatellites.length === 0 && <p className="muted">No tracked objects match your search.</p>}
             </div>
           </section>
         )}
-
-        {/* =====================================================
-            ABOUT
-            ===================================================== */}
 
         {section === "about" && (
           <section className="simple-page">
             <div className="page-intro">
               <div>
-                <div className="eyebrow">
-                  ORBITWATCH
-                </div>
-
-                <h1>
-                  A small window into orbit.
-                </h1>
-
-                <p>
-                  Understand what&apos;s moving above you
-                  without needing to understand orbital
-                  mechanics first.
-                </p>
+                <h1>A small window into orbit</h1>
+                <p>Understand what&rsquo;s moving above you without needing to understand orbital mechanics first.</p>
               </div>
             </div>
 
             <div className="about-copy">
               <p>
-                OrbitWatch is being built as a simple,
-                human-friendly satellite tracker.
+                OrbitWatch pulls current orbital element sets for a sample of well-known satellites and active constellations
+                from CelesTrak, then propagates each one&rsquo;s position for your exact coordinates using SGP4 &mdash; the
+                same model used to generate the published elements in the first place.
               </p>
-
               <p>
-                The current interface uses demonstration
-                satellite positions. The next major step is
-                connecting real orbital data and calculating
-                the position of satellites from the
-                observer&apos;s location.
+                The sky chart plots those positions against a real background star field, computed from each star&rsquo;s
+                catalog coordinates and your local sidereal time, so the layout is a genuine view of your sky rather than a
+                decorative backdrop.
               </p>
-
               <div className="about-note">
-                <strong>Current stage</strong>
-                <br />
-                Interface → satellite visualization →
-                real orbital tracking.
+                <strong>How it works</strong>
+                <p>Browser (React) &rarr; OrbitWatch API (Express) &rarr; CelesTrak element sets, propagated with satellite.js on every request.</p>
               </div>
             </div>
           </section>
         )}
 
         <footer>
-          <span>ORBITWATCH / SKY OBSERVATION</span>
-          <span>BUILT FOR CURIOSITY</span>
+          <span>OrbitWatch</span>
+          <span>Positions update automatically every 15 seconds</span>
         </footer>
       </main>
     </div>
