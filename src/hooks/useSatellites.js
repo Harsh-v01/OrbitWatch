@@ -5,9 +5,10 @@ const POLL_MS = 15000;
 
 export function useSatellites(location) {
   const [satellites, setSatellites] = useState([]);
-  const [status, setStatus] = useState("loading"); // loading | ready | error
+  const [status, setStatus] = useState("loading"); // loading | ready | stale | unavailable | error
   const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [orbitalData, setOrbitalData] = useState(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -18,14 +19,35 @@ export function useSatellites(location) {
       try {
         const data = await getSatellitesAbove({ lat: location.lat, lng: location.lng });
         if (cancelled) return;
-        setSatellites(data.satellites);
+        setSatellites(
+          Array.isArray(data.satellites)
+            ? data.satellites
+            : []
+        );
         setUpdatedAt(new Date());
-        setStatus("ready");
+        setOrbitalData(data.orbitalData ?? null);
+        setStatus(
+          data.orbitalData?.status === "stale"
+            ? "stale"
+            : "ready"
+        );
         setError(null);
       } catch (err) {
         if (cancelled) return;
         setError(err.message);
-        setStatus((prev) => (prev === "ready" ? "ready" : "error"));
+        setOrbitalData(err.body?.orbitalData ?? null);
+        setStatus((prev) => {
+          if (
+            prev === "ready" ||
+            prev === "stale"
+          ) {
+            return prev;
+          }
+
+          return err.body?.status === "unavailable"
+            ? "unavailable"
+            : "error";
+        });
       }
     }
 
@@ -38,5 +60,5 @@ export function useSatellites(location) {
     };
   }, [location?.lat, location?.lng]);
 
-  return { satellites, status, error, updatedAt };
+  return { satellites, status, error, updatedAt, orbitalData };
 }

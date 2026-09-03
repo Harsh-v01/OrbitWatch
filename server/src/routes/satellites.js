@@ -1,8 +1,43 @@
 import { Router } from "express";
 import { getVisibleSatellites, getSatelliteState, getPasses, getNextPassForEach } from "../services/orbitService.js";
-import { cacheAgeMs } from "../services/tleCache.js";
+import { cacheAgeMs, cacheInfo, OrbitalDataUnavailableError } from "../services/tleCache.js";
 
 const router = Router();
+
+function orbitalDataState() {
+  const info = cacheInfo();
+
+  return {
+    status:
+      info.status,
+    cached:
+      info.cached,
+    stale:
+      info.stale,
+    builtAt:
+      info.builtAt,
+    ageMs:
+      info.ageMs,
+    count:
+      info.count
+  };
+}
+
+function sendOrbitalUnavailable(res, error) {
+  const orbitalData =
+    orbitalDataState();
+
+  res.status(503).json({
+    status: "unavailable",
+    message:
+      "Orbital data is temporarily unavailable.",
+    cached:
+      orbitalData.cached,
+    orbitalData,
+    detail:
+      error.message
+  });
+}
 
 function parseObserver(req, res) {
   const lat = Number(req.query.lat);
@@ -26,9 +61,15 @@ router.get("/above", async (req, res) => {
       satellites,
       observer,
       tleAgeMs: cacheAgeMs(),
+      orbitalData: orbitalDataState(),
       generatedAt: new Date().toISOString()
     });
   } catch (error) {
+    if (error instanceof OrbitalDataUnavailableError) {
+      sendOrbitalUnavailable(res, error);
+      return;
+    }
+
     res.status(502).json({ error: "Could not load live orbital data.", detail: error.message });
   }
 });
@@ -42,8 +83,13 @@ router.get("/passes/next", async (req, res) => {
 
   try {
     const passes = await getNextPassForEach({ ...observer, hours, limit });
-    res.json({ passes, hours });
+    res.json({ passes, hours, orbitalData: orbitalDataState() });
   } catch (error) {
+    if (error instanceof OrbitalDataUnavailableError) {
+      sendOrbitalUnavailable(res, error);
+      return;
+    }
+
     res.status(502).json({ error: "Could not compute upcoming passes.", detail: error.message });
   }
 });
@@ -55,8 +101,13 @@ router.get("/:id", async (req, res) => {
   try {
     const state = await getSatelliteState({ catalogNumber: req.params.id, ...observer });
     if (!state) return res.status(404).json({ error: `No object found for catalog number ${req.params.id}` });
-    res.json(state);
+    res.json({ ...state, orbitalData: orbitalDataState() });
   } catch (error) {
+    if (error instanceof OrbitalDataUnavailableError) {
+      sendOrbitalUnavailable(res, error);
+      return;
+    }
+
     res.status(502).json({ error: "Could not load live orbital data.", detail: error.message });
   }
 });
@@ -69,8 +120,13 @@ router.get("/:id/passes", async (req, res) => {
 
   try {
     const passes = await getPasses({ catalogNumber: req.params.id, ...observer, hours });
-    res.json({ catalogNumber: Number(req.params.id), hours, passes });
+    res.json({ catalogNumber: Number(req.params.id), hours, passes, orbitalData: orbitalDataState() });
   } catch (error) {
+    if (error instanceof OrbitalDataUnavailableError) {
+      sendOrbitalUnavailable(res, error);
+      return;
+    }
+
     res.status(502).json({ error: "Could not compute passes.", detail: error.message });
   }
 });

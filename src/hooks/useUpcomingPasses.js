@@ -6,6 +6,7 @@ const POLL_MS = 5 * 60 * 1000;
 export function useUpcomingPasses(location, { hours = 8, limit = 12 } = {}) {
   const [passes, setPasses] = useState([]);
   const [status, setStatus] = useState("loading");
+  const [orbitalData, setOrbitalData] = useState(null);
 
   useEffect(() => {
     if (!location) return undefined;
@@ -16,12 +17,26 @@ export function useUpcomingPasses(location, { hours = 8, limit = 12 } = {}) {
       getUpcomingPasses({ lat: location.lat, lng: location.lng, hours, limit })
         .then((data) => {
           if (cancelled) return;
-          setPasses(data.passes);
-          setStatus("ready");
+          setPasses(
+            Array.isArray(data.passes)
+              ? data.passes
+              : []
+          );
+          setOrbitalData(data.orbitalData ?? null);
+          setStatus(
+            data.orbitalData?.status === "stale"
+              ? "stale"
+              : "ready"
+          );
         })
-        .catch(() => {
+        .catch((error) => {
           if (cancelled) return;
-          setStatus("error");
+          setOrbitalData(error.body?.orbitalData ?? null);
+          setStatus(
+            error.body?.status === "unavailable"
+              ? "unavailable"
+              : "error"
+          );
         });
     }
 
@@ -33,5 +48,5 @@ export function useUpcomingPasses(location, { hours = 8, limit = 12 } = {}) {
     };
   }, [location?.lat, location?.lng, hours, limit]);
 
-  return { passes, status };
+  return { passes, status, orbitalData };
 }

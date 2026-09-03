@@ -1,10 +1,27 @@
 async function request(path) {
   const response = await fetch(path);
+  const body =
+    await response
+      .json()
+      .catch(() => ({}));
+
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${response.status})`);
+    const error =
+      new Error(
+        body.message ||
+        body.error ||
+        `Request failed (${response.status})`
+      );
+
+    error.status =
+      response.status;
+    error.body =
+      body;
+
+    throw error;
   }
-  return response.json();
+
+  return body;
 }
 
 export async function getSatellitesAbove({ lat, lng, alt = 0 }) {

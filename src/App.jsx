@@ -12,7 +12,7 @@ import { useSatellites } from "./hooks/useSatellites";
 
 function App() {
   const { location, status: locationStatus, refreshLocation } = useObserverLocation();
-  const { satellites, status: satStatus, error: satError, updatedAt } = useSatellites(location);
+  const { satellites, status: satStatus, error: satError, updatedAt, orbitalData } = useSatellites(location);
 
   const [selectedId, setSelectedId] = useState(null);
   const [query, setQuery] = useState("");
@@ -74,13 +74,15 @@ function App() {
 
               <div className="sky-meta">
                 <span>{satellites.filter((s) => s.elevation >= 0).length} above the horizon</span>
-                <span>{secondsAgo === null ? "loading" : secondsAgo <= 1 ? "updated just now" : `updated ${secondsAgo}s ago`}</span>
+                <span>{satStatus === "stale" ? "using cached orbital data" : secondsAgo === null ? "loading" : secondsAgo <= 1 ? "updated just now" : `updated ${secondsAgo}s ago`}</span>
               </div>
             </div>
 
             {satError && satellites.length === 0 && (
               <div className="error-banner">
-                Couldn&rsquo;t reach the tracking service ({satError}). Make sure the OrbitWatch server is running on port 8787.
+                {satStatus === "unavailable"
+                  ? "Orbital data is temporarily unavailable. Add a real cache or retry when CelesTrak is reachable."
+                  : `Couldn\u2019t reach the tracking service (${satError}). Make sure the OrbitWatch server is running on port 8787.`}
               </div>
             )}
 
@@ -121,7 +123,11 @@ function App() {
             <div className="page-intro">
               <div>
                 <h1>Tracked objects</h1>
-                <p>{satellites.length} objects currently in range, sampled from CelesTrak&rsquo;s live element sets.</p>
+                <p>
+                  {orbitalData?.cached
+                    ? `${satellites.length} objects currently in range, propagated from ${orbitalData.stale ? "cached" : "current"} orbital data.`
+                    : "Orbital data is temporarily unavailable."}
+                </p>
               </div>
             </div>
 
