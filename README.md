@@ -37,24 +37,6 @@ OrbitWatch/
     └── src/routes/
 ```
 
-## Run it
-
-You need two processes: the API and the client.
-
-```bash
-# Terminal 1 — API (http://localhost:8787)
-cd server
-npm install
-npm run dev
-
-# Terminal 2 — client (http://localhost:5173)
-npm install
-npm run dev
-```
-
-The Vite dev server proxies `/api/*` to `http://localhost:8787`, so just open
-`http://localhost:5173`.
-
 ## API
 
 - `GET /api/satellites/above?lat=&lng=&alt=` — everything currently near or
@@ -66,13 +48,3 @@ The Vite dev server proxies `/api/*` to `http://localhost:8787`, so just open
 - `GET /api/satellites/passes/next?lat=&lng=&hours=8&limit=12` — the next
   pass for every tracked object, sorted by time.
 - `GET /api/space-weather` — current Kp index, solar wind, solar flux.
-
-## Notes for deployment
-
-- TLE data is cached in memory for 2 hours; space weather for 15 minutes. For
-  a production deploy behind multiple server instances, swap these for a
-  shared cache (Redis, etc).
-- CelesTrak and NOAA SWPC are free, public, and don't require API keys — but
-  are rate-sensitive. Don't lower the cache TTLs without a reason.
-- The curated satellite list lives in `server/src/data/trackedSatellites.js`
-  if you want to track different objects.
