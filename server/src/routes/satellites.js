@@ -19,7 +19,14 @@ function orbitalDataState() {
     ageMs:
       info.ageMs,
     count:
-      info.count
+      info.count,
+    /*
+     * Surfaces which link of the CelesTrak -> SatNOGS -> cache
+     * chain is currently answering, so the UI can be honest
+     * about where the orbital elements came from.
+     */
+    provider:
+      info.provider
   };
 }
 

@@ -241,7 +241,7 @@ export function categoryColor(category) {
       return "science";
 
     case "india":
-      return "station";
+      return "india";
 
     default:
       return "other";

@@ -172,6 +172,24 @@ function computeState(
       vz * vz
     );
 
+  /*
+   * eciToGeodetic returns latitude/longitude in radians.
+   * These are already computed above, so exposing them costs
+   * nothing and lets the client show the sub-satellite point.
+   */
+  const latitudeDeg =
+    geodetic.latitude *
+    RAD2DEG;
+
+  const longitudeDeg =
+    (
+      (
+        geodetic.longitude *
+          RAD2DEG +
+        540
+      ) % 360
+    ) - 180;
+
   return {
     azimuth:
       (
@@ -191,7 +209,11 @@ function computeState(
       geodetic.height,
 
     velocityKmS:
-      speedKmS
+      speedKmS,
+
+    latitudeDeg,
+
+    longitudeDeg
   };
 }
 
@@ -311,6 +333,16 @@ export async function getVisibleSatellites({
           state.velocityKmS.toFixed(2)
         )
     ,
+      latitude:
+        Number(
+          state.latitudeDeg.toFixed(3)
+        ),
+
+      longitude:
+        Number(
+          state.longitudeDeg.toFixed(3)
+        ),
+
       status
     });
   }
@@ -359,6 +391,30 @@ export async function getSatelliteState({
   if (!state) {
     return null;
   }
+
+  /*
+   * Sample 20s ahead so the detail view can report the same
+   * Rising / Setting / Active status as the live list.
+   */
+  const future =
+    computeState(
+      entry,
+      observerGd,
+      new Date(
+        Date.now() +
+        20_000
+      )
+    );
+
+  const status =
+    future
+      ? statusFor(
+          state.elevation,
+          future.elevation
+        )
+      : state.elevation > 0
+        ? "Active"
+        : "Below horizon";
 
   return {
     id:
@@ -411,7 +467,44 @@ export async function getSatelliteState({
     velocity:
       Number(
         state.velocityKmS.toFixed(2)
-      )
+      ),
+
+    latitude:
+      Number(
+        state.latitudeDeg.toFixed(3)
+      ),
+
+    longitude:
+      Number(
+        state.longitudeDeg.toFixed(3)
+      ),
+
+    status,
+
+    /*
+     * Orbital element metadata already carried on the catalog
+     * entry. Null when the active provider did not supply it.
+     */
+    objectId:
+      entry.objectId ?? null,
+
+    periodMinutes:
+      entry.periodMinutes ?? null,
+
+    inclination:
+      entry.inclination ?? null,
+
+    apogeeKm:
+      entry.apogeeKm ?? null,
+
+    perigeeKm:
+      entry.perigeeKm ?? null,
+
+    epoch:
+      entry.epoch ?? null,
+
+    source:
+      entry.source ?? null
   };
 }
 
