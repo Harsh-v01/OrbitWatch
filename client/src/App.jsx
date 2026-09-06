@@ -1,212 +1,152 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  ChevronRight,
-  Code2,
-  Radio,
-  Sparkles,
-} from "lucide-react";
-import Header from "./components/layout/Header";
-import Sidebar from "./components/layout/Sidebar";
-import DashboardStats from "./components/dashboard/DashboardStats";
-import SystemStatus from "./components/dashboard/SystemStatus";
-import SkyRadar from "./components/radar/SkyRadar";
-import UpcomingPasses from "./components/satellites/UpcomingPasses";
-import SpaceWeather from "./components/satellites/SpaceWeather";
-import SatelliteCatalog from "./components/satellites/SatelliteCatalog";
-import SelectedSatellite from "./components/telemetry/SelectedSatellite";
-import Telemetry from "./components/telemetry/Telemetry";
-import AzimuthCard from "./components/telemetry/AzimuthCard";
+import { CalendarClock, Info, Radar, Satellite } from "lucide-react";
+
 import { useObserverLocation } from "./hooks/useObserverLocation";
 import { useSatellites } from "./hooks/useSatellites";
+import { useTheme } from "./hooks/useTheme";
+import { countAboveHorizon } from "./lib/satelliteMeta";
 
-function PageIntro({ eyebrow, title, description, meta }) {
-  return (
-    <div className="page-intro">
-      <div>
-        <span className="eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
-        <p>{description}</p>
-      </div>
-      {meta && <div className="intro-meta">{meta}</div>}
-    </div>
-  );
-}
+import ErrorBoundary from "./components/ErrorBoundary";
+import NavTabs from "./components/layout/NavTabs";
+import TopBar from "./components/layout/TopBar";
 
-function App() {
-  const { location, status: locationStatus, refreshLocation } = useObserverLocation();
-  const { satellites, status: satStatus, error: satError, updatedAt, orbitalData } = useSatellites(location);
+import AboutPage from "./pages/AboutPage";
+import CatalogPage from "./pages/CatalogPage";
+import PassesPage from "./pages/PassesPage";
+import SkyPage from "./pages/SkyPage";
 
+/*
+ * App owns only what has to be shared: where we are observing
+ * from, the live catalog, which object is selected, and which
+ * section is on screen. Everything visual lives in a component.
+ */
+export default function App() {
+  const {
+    location,
+    status: locationStatus,
+    refreshLocation,
+  } = useObserverLocation();
+
+  const { satellites, status, error, updatedAt, orbitalData } =
+    useSatellites(location);
+
+  const { theme, setTheme } = useTheme();
+
+  const [section, setSection] = useState("sky");
   const [selectedId, setSelectedId] = useState(null);
   const [query, setQuery] = useState("");
-  const [section, setSection] = useState("sky");
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState(() => new Date());
 
+  /* One clock for the whole app rather than a timer per panel. */
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  /*
+   * Open on the most prominent object in the sky so the page is
+   * never empty, but never override a deliberate choice.
+   */
   useEffect(() => {
-    if (!selectedId && satellites.length > 0) setSelectedId(satellites[0].id);
+    if (selectedId !== null || satellites.length === 0) return;
+
+    const highest = satellites.find(
+      (satellite) => Number(satellite.elevation) >= 0
+    );
+
+    setSelectedId((highest ?? satellites[0]).id);
   }, [satellites, selectedId]);
 
-  const selectedSatellite = satellites.find((satellite) => satellite.id === selectedId) || null;
+  const selected = useMemo(
+    () => satellites.find((satellite) => satellite.id === selectedId) ?? null,
+    [satellites, selectedId]
+  );
 
-  const filteredSatellites = useMemo(() => {
-    const value = query.trim().toLowerCase();
-    if (!value) return satellites;
-    return satellites.filter((satellite) =>
-      [satellite.name, satellite.type, satellite.operator, satellite.mission]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(value))
-    );
-  }, [query, satellites]);
+  /*
+   * A selected object can genuinely leave the payload when it
+   * sets. That is a real state, not an error.
+   */
+  const selectionLost =
+    selectedId !== null && !selected && satellites.length > 0;
 
-  const handleSelectSatellite = (id) => {
+  const handleSelect = (id) => {
     setSelectedId(id);
     setSection("sky");
   };
 
-  const secondsAgo = updatedAt ? Math.max(0, Math.round((now - updatedAt) / 1000)) : null;
+  const sections = [
+    { id: "sky", label: "Sky", icon: Radar, badge: countAboveHorizon(satellites) || null },
+    { id: "catalog", label: "Catalog", icon: Satellite, badge: satellites.length || null },
+    { id: "passes", label: "Passes", icon: CalendarClock, badge: null },
+    { id: "about", label: "About", icon: Info, badge: null },
+  ];
 
   return (
     <div className="app-shell">
-      <Sidebar activeSection={section} onSectionChange={setSection} />
-
-      <main className="main-content">
-        <Header
+      <ErrorBoundary label="The header">
+        <TopBar
           location={location}
           locationStatus={locationStatus}
           onRefreshLocation={refreshLocation}
+          satellites={satellites}
           query={query}
           onQueryChange={setQuery}
+          onSelect={handleSelect}
+          theme={theme}
+          onThemeChange={setTheme}
+          status={status}
+          orbitalData={orbitalData}
           now={now}
-          satellites={filteredSatellites}
-          onSelectSatellite={handleSelectSatellite}
         />
+      </ErrorBoundary>
 
-        <div className="content-wrap">
-          {section === "sky" && (
-            <>
-              <PageIntro
-                eyebrow="LIVE ORBITAL MONITOR"
-                title="What’s above you"
-                description="A real-time view of objects crossing your sky, calculated from orbital elements for your observing location."
-                meta={
-                  <div className="intro-live">
-                    <span className="pulse-dot" />
-                    <strong>{satellites.filter((s) => s.elevation >= 0).length}</strong>
-                    <span>above horizon</span>
-                    <i />
-                    <span>{secondsAgo === null ? "SYNCING" : secondsAgo <= 1 ? "UPDATED NOW" : `UPDATED ${secondsAgo}s AGO`}</span>
-                  </div>
-                }
-              />
+      <NavTabs sections={sections} active={section} onChange={setSection} />
 
-              <DashboardStats satellites={satellites} status={satStatus} updatedAt={updatedAt} location={location} />
-              <SystemStatus status={satStatus} error={satError} orbitalData={orbitalData} />
+      <main className="app-main">
+        {section === "sky" && (
+          <SkyPage
+            location={location}
+            satellites={satellites}
+            status={status}
+            error={error}
+            orbitalData={orbitalData}
+            updatedAt={updatedAt}
+            now={now}
+            selectedId={selectedId}
+            selected={selected}
+            selectionLost={selectionLost}
+            onSelect={handleSelect}
+          />
+        )}
 
-              <div className="workspace-grid">
-                <div className="workspace-main">
-                  <SkyRadar
-                    satellites={satellites}
-                    selectedId={selectedId}
-                    onSelect={handleSelectSatellite}
-                    location={location}
-                    now={now}
-                    status={satStatus}
-                  />
+        {section === "catalog" && (
+          <CatalogPage
+            satellites={satellites}
+            status={status}
+            error={error}
+            orbitalData={orbitalData}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            query={query}
+            onQueryChange={setQuery}
+          />
+        )}
 
-                  <div className="telemetry-grid">
-                    <SelectedSatellite satellite={selectedSatellite} />
-                    <Telemetry satellite={selectedSatellite} />
-                    <AzimuthCard satellite={selectedSatellite} />
-                  </div>
-                </div>
+        {section === "passes" && (
+          <PassesPage
+            location={location}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+          />
+        )}
 
-                <aside className="workspace-side">
-                  <UpcomingPasses location={location} selectedId={selectedId} onSelect={handleSelectSatellite} />
-                  <SpaceWeather />
-                </aside>
-              </div>
-            </>
-          )}
-
-          {section === "satellites" && (
-            <>
-              <PageIntro
-                eyebrow="OBJECT CATALOG"
-                title="Tracked satellites"
-                description="Explore the orbital objects currently available to OrbitWatch. Indian missions are surfaced separately when present."
-                meta={<span className="intro-count">{filteredSatellites.length} OBJECTS</span>}
-              />
-              <SatelliteCatalog
-                satellites={satellites}
-                selectedId={selectedId}
-                onSelect={handleSelectSatellite}
-                query={query}
-                onQueryChange={setQuery}
-              />
-            </>
-          )}
-
-          {section === "passes" && (
-            <>
-              <PageIntro
-                eyebrow="VISIBILITY FORECAST"
-                title="Upcoming passes"
-                description="Predicted opportunities to see tracked objects from your current observing position."
-              />
-              <UpcomingPasses location={location} selectedId={selectedId} onSelect={handleSelectSatellite} expanded />
-            </>
-          )}
-
-          {section === "about" && (
-            <>
-              <PageIntro
-                eyebrow="ABOUT ORBITWATCH"
-                title="A small window into orbit."
-                description="OrbitWatch turns orbital mechanics into something you can actually explore."
-              />
-              <section className="about-grid">
-                <div className="about-hero">
-                  <div className="about-orbit"><span /></div>
-                  <span className="eyebrow">BUILT AROUND REAL ORBITS</span>
-                  <h2>Not a decorative sky map.</h2>
-                  <p>
-                    OrbitWatch propagates satellite positions from orbital elements using SGP4 and converts them into azimuth,
-                    elevation, range and altitude for your exact observing position.
-                  </p>
-                  <div className="about-flow">
-                    <span>ORBITAL SOURCE</span><ChevronRight size={14} />
-                    <span>SGP4</span><ChevronRight size={14} />
-                    <span>OBSERVER</span><ChevronRight size={14} />
-                    <span>LIVE SKY</span>
-                  </div>
-                </div>
-                <div className="about-stack">
-                  <div className="about-card"><Radio size={17} /><div><b>Live propagation</b><p>Positions are calculated rather than read from a static lookup table.</p></div></div>
-                  <div className="about-card"><Sparkles size={17} /><div><b>Human-readable astronomy</b><p>Star fields, bearings and pass quality are designed to help you understand what you see.</p></div></div>
-                  <div className="about-card">
-                    <Code2 size={17} />
-                    <div>
-                      <b>Open project</b>
-                      <p>OrbitWatch is structured as a React client with a small Express orbital service.</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-
-        <footer className="app-footer">
-          <span>ORBITWATCH <b>·</b> LIVE ORBITAL INTELLIGENCE</span>
-          <span>POSITIONS REFRESH EVERY 15 SECONDS</span>
-        </footer>
+        {section === "about" && <AboutPage />}
       </main>
+
+      <footer className="app-footer">
+        <span>OrbitWatch · live orbital observation</span>
+        <span>Positions refresh every 15 seconds</span>
+      </footer>
     </div>
   );
 }
-
-export default App;
