@@ -1,11 +1,9 @@
 /*
  * Static validation for the OrbitWatch client.
- *
  * `vite build` cannot run here: node_modules was installed on
  * Windows and the Linux rollup binary is unavailable. So this
  * does the checks a build would have caught, using the pure-JS
  * Babel packages that are already installed:
- *
  *   1. every module parses as ESM + JSX
  *   2. every relative import resolves to a real file
  *   3. every named/default import exists in the target module
@@ -32,7 +30,6 @@ const notes = [];
 const fail = (m) => problems.push(m);
 
 /* ---------- collect source files ---------- */
-
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
@@ -45,9 +42,7 @@ function walk(dir, out = []) {
 const all = walk(SRC);
 const modules = all.filter((f) => /\.jsx?$/.test(f));
 const rel = (f) => relative(SRC, f).replace(/\\/g, "/");
-
 /* ---------- 1. parse ---------- */
-
 const asts = new Map();
 
 for (const file of modules) {
@@ -94,7 +89,6 @@ function resolveImport(fromFile, spec) {
   const candidates = [base, `${base}.js`, `${base}.jsx`, join(base, "index.js"), join(base, "index.jsx")];
   return candidates.find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
 }
-
 /* lucide-react's real export list, read from the module itself
    rather than guessed from filenames. */
 let lucideExports = null;
