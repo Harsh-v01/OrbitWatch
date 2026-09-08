@@ -1,11 +1,5 @@
 import { Component } from "react";
 
-/*
- * Keeps one failing panel from taking down the whole instrument.
- * Wrapped around each independent region of the Sky page, so a
- * bad icon import or an unexpected payload degrades to a small
- * inline notice instead of a blank screen.
- */
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
