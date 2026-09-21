@@ -1,5 +1,5 @@
 # OrbitWatch
-### Current Status : Work In progress
+### Current Status : Work In progress ( Backend is being configured )
 OrbitWatch is a live satellite sky tracker built around real orbital propagation.
 
 ## Structure
